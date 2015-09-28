@@ -44,6 +44,7 @@ describe("resource", function() {
       expect(isValidDottedPath('1abc')).toBe(false);
       expect(isValidDottedPath('.')).toBe(false);
       expect(isValidDottedPath('$')).toBe(true);
+      expect(isValidDottedPath('@')).toBe(true);
       expect(isValidDottedPath('a')).toBe(true);
       expect(isValidDottedPath('A')).toBe(true);
       expect(isValidDottedPath('a1')).toBe(true);
@@ -53,12 +54,14 @@ describe("resource", function() {
       expect(isValidDottedPath('$.$')).toBe(true);
       expect(isValidDottedPath('.$')).toBe(false);
       expect(isValidDottedPath('$.')).toBe(false);
+      expect(isValidDottedPath('@.')).toBe(false);
+      expect(isValidDottedPath('.@')).toBe(false);
     });
   });
 
   describe('lookupDottedPath', function() {
     /* global lookupDottedPath: false */
-    var data = {a: {b: 'foo', c: null}};
+    var data = {a: {b: 'foo', c: null, '@d':'d-foo'},'@b':'b-foo'};
 
     it('should throw for invalid path', function() {
       expect(function() {
@@ -68,9 +71,11 @@ describe("resource", function() {
     });
 
     it('should get dotted paths', function() {
-      expect(lookupDottedPath(data, 'a')).toEqual({b: 'foo', c: null});
+      expect(lookupDottedPath(data, 'a')).toEqual({b: 'foo', c: null, '@d':'d-foo'});
       expect(lookupDottedPath(data, 'a.b')).toBe('foo');
       expect(lookupDottedPath(data, 'a.c')).toBeNull();
+      expect(lookupDottedPath(data, 'a.@d')).toBe('d-foo');
+      expect(lookupDottedPath(data, '@b')).toBe('b-foo');
     });
 
     it('should skip over null/undefined members', function() {
@@ -292,6 +297,14 @@ describe("resource", function() {
     R.get({a: 'foo'});
   });
 
+  it('should support IPv6 URLs', function() {
+    var R = $resource('http://[2620:0:861:ed1a::1]/:ed1a/', {}, {}, {stripTrailingSlashes: false});
+    $httpBackend.expect('GET', 'http://[2620:0:861:ed1a::1]/foo/').respond({});
+    $httpBackend.expect('GET', 'http://[2620:0:861:ed1a::1]/').respond({});
+    R.get({ed1a: 'foo'});
+    R.get({});
+  });
+
   it('should support overriding provider default trailing-slash stripping configuration', function() {
     // Set the new behavior for all new resources created by overriding the
     // provider configuration
@@ -318,10 +331,18 @@ describe("resource", function() {
   });
 
 
-  it('should encode & in url params', function() {
-    var R = $resource('/Path/:a');
+  it('should encode & in query params unless in query param value', function() {
+    var R1 = $resource('/Path/:a');
     $httpBackend.expect('GET', '/Path/doh&foo?bar=baz%261').respond('{}');
-    R.get({a: 'doh&foo', bar: 'baz&1'});
+    R1.get({a: 'doh&foo', bar: 'baz&1'});
+
+    var R2 = $resource('/api/myapp/resource?:query');
+    $httpBackend.expect('GET', '/api/myapp/resource?foo&bar').respond('{}');
+    R2.get({query: 'foo&bar'});
+
+    var R3 = $resource('/api/myapp/resource?from=:from');
+    $httpBackend.expect('GET', '/api/myapp/resource?from=bar%20%26%20blanks').respond('{}');
+    R3.get({from: 'bar & blanks'});
   });
 
 
@@ -1322,7 +1343,7 @@ describe('resource', function() {
     expect(successSpy).not.toHaveBeenCalled();
     expect(failureSpy).toHaveBeenCalled();
     expect(failureSpy.mostRecentCall.args[0]).toMatch(
-        /^\[\$resource:badcfg\] Error in resource configuration for action `query`\. Expected response to contain an array but got an object/
+        /^\[\$resource:badcfg\] Error in resource configuration for action `query`\. Expected response to contain an array but got an object \(Request: GET \/Customer\/123\)/
       );
   });
 
@@ -1339,7 +1360,7 @@ describe('resource', function() {
     expect(successSpy).not.toHaveBeenCalled();
     expect(failureSpy).toHaveBeenCalled();
     expect(failureSpy.mostRecentCall.args[0]).toMatch(
-        /^\[\$resource:badcfg\] Error in resource configuration for action `get`\. Expected response to contain an object but got an array/
+        /^\[\$resource:badcfg\] Error in resource configuration for action `get`\. Expected response to contain an object but got an array \(Request: GET \/Customer\/123\)/
       );
   });
 
