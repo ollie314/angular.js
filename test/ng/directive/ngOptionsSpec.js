@@ -2,7 +2,7 @@
 
 describe('ngOptions', function() {
 
-  var scope, formElement, element, $compile;
+  var scope, formElement, element, $compile, linkLog;
 
   function compile(html) {
     formElement = jqLite('<form name="form">' + html + '</form>');
@@ -103,6 +103,53 @@ describe('ngOptions', function() {
       }
     });
   });
+
+  beforeEach(module(function($compileProvider, $provide) {
+    linkLog = [];
+
+    $compileProvider
+      .directive('customSelect', function() {
+        return {
+          restrict: "E",
+          replace: true,
+          scope: {
+            ngModel: '=',
+            options: '='
+          },
+          templateUrl: 'select_template.html',
+          link: function(scope, $element, attributes) {
+            scope.selectable_options = scope.options;
+          }
+        };
+      })
+
+      .directive('oCompileContents', function() {
+        return {
+          link: function(scope, element)  {
+            linkLog.push('linkCompileContents');
+            $compile(element.contents())(scope);
+          }
+        };
+    });
+
+    $provide.decorator('ngOptionsDirective', function($delegate) {
+
+      var origPreLink = $delegate[0].link.pre;
+      var origPostLink = $delegate[0].link.post;
+
+      $delegate[0].compile = function() {
+        return {
+          pre: origPreLink,
+          post: function() {
+            linkLog.push('linkNgOptions');
+            origPostLink.apply(this, arguments);
+          }
+        };
+      };
+
+      return $delegate;
+    });
+  }));
 
   beforeEach(inject(function($rootScope, _$compile_) {
     scope = $rootScope.$new(); //create a child scope because the root scope can't be $destroy-ed
@@ -2097,28 +2144,33 @@ describe('ngOptions', function() {
     });
 
 
-    it('should be possible to use ngIf in the blank option', function() {
-      var option;
-      createSingleSelect('<option ng-if="isBlank" value="">blank</option>');
+    it('should not throw when a directive compiles the blank option before ngOptions is linked', function() {
+      expect(function() {
+        createSelect({
+          'o-compile-contents': '',
+          'name': 'select',
+          'ng-model': 'value',
+          'ng-options': 'item for item in items'
+        }, true);
+      }).not.toThrow();
 
-      scope.$apply(function() {
-        scope.values = [{name: 'A'}];
-        scope.isBlank = true;
-      });
-
-      expect(element.find('option').length).toBe(2);
-      option = element.find('option').eq(0);
-      expect(option.val()).toBe('');
-      expect(option.text()).toBe('blank');
-
-      scope.$apply(function() {
-        scope.isBlank = false;
-      });
-
-      expect(element.find('option').length).toBe(1);
-      option = element.find('option').eq(0);
-      expect(option.text()).toBe('A');
+      expect(linkLog).toEqual(['linkCompileContents', 'linkNgOptions']);
     });
+
+
+    it('should not throw with a directive that replaces', inject(function($templateCache, $httpBackend) {
+      $templateCache.put('select_template.html', '<select ng-options="option as option for option in selectable_options"> <option value="">This is a test</option> </select>');
+
+      scope.options = ['a', 'b', 'c', 'd'];
+
+      expect(function() {
+        element = $compile('<custom-select ng-model="value" options="options"></custom-select>')(scope);
+        scope.$digest();
+      }).not.toThrow();
+
+      dealoc(element);
+    }));
+
   });
 
 
