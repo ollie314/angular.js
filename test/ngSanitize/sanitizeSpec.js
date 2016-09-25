@@ -1,6 +1,8 @@
 'use strict';
 
 describe('HTML', function() {
+  var ua = window.navigator.userAgent;
+  var isChrome = /Chrome/.test(ua) && !/Edge/.test(ua);
 
   var expectHTML;
 
@@ -17,11 +19,10 @@ describe('HTML', function() {
 
   describe('htmlParser', function() {
     /* global htmlParser */
-    if (angular.isUndefined(window.htmlParser)) return;
 
     var handler, start, text, comment;
     beforeEach(function() {
-      text = "";
+      text = '';
       start = null;
       handler = {
         start: function(tag, attrs) {
@@ -129,6 +130,17 @@ describe('HTML', function() {
     expectHTML('a<div style="abc">b</div>c').toEqual('a<div>b</div>c');
   });
 
+  it('should handle large datasets', function() {
+    // Large is non-trivial to quantify, but handling ~100,000 should be sufficient for most purposes.
+    var largeNumber = 17; // 2^17 = 131,072
+    var result = '<div>b</div>';
+    // Ideally we would use repeat, but that isn't supported in IE.
+    for (var i = 0; i < largeNumber; i++) {
+      result += result;
+    }
+    expectHTML('a' + result + 'c').toEqual('a' + result + 'c');
+  });
+
   it('should remove style', function() {
     expectHTML('a<STyle>evil</stYle>c.').toEqual('ac.');
   });
@@ -151,6 +163,7 @@ describe('HTML', function() {
 
   it('should remove unsafe value', function() {
     expectHTML('<a href="javascript:alert()">').toEqual('<a></a>');
+    expectHTML('<img src="foo.gif" usemap="#foomap">').toEqual('<img src="foo.gif">');
   });
 
   it('should handle self closed elements', function() {
@@ -222,7 +235,7 @@ describe('HTML', function() {
       .toEqual('');
   });
 
-  if (/Chrome/.test(window.navigator.userAgent)) {
+  if (isChrome) {
     it('should prevent mXSS attacks', function() {
       expectHTML('<a href="&#x3000;javascript:alert(1)">CLICKME</a>').toBe('<a>CLICKME</a>');
     });
@@ -245,7 +258,8 @@ describe('HTML', function() {
       expectHTML('<svg width="400px" height="150px" xmlns="http://www.w3.org/2000/svg"><circle cx="50" cy="50" r="40" stroke="black" stroke-width="3" fill="red"></svg>')
         .toBeOneOf('<svg width="400px" height="150px" xmlns="http://www.w3.org/2000/svg"><circle cx="50" cy="50" r="40" stroke="black" stroke-width="3" fill="red"></circle></svg>',
                    '<svg xmlns="http://www.w3.org/2000/svg" height="150px" width="400px"><circle fill="red" stroke-width="3" stroke="black" r="40" cy="50" cx="50"></circle></svg>',
-                   '<svg width="400px" height="150px" xmlns="http://www.w3.org/2000/svg"><circle fill="red" stroke="black" stroke-width="3" cx="50" cy="50" r="40"></circle></svg>');
+                   '<svg width="400px" height="150px" xmlns="http://www.w3.org/2000/svg"><circle fill="red" stroke="black" stroke-width="3" cx="50" cy="50" r="40"></circle></svg>',
+                   '<svg width="400px" height="150px" xmlns="http://www.w3.org/2000/svg"><circle FILL="red" STROKE="black" STROKE-WIDTH="3" cx="50" cy="50" r="40"></circle></svg>');
     });
 
     it('should not ignore white-listed svg camelCased attributes', function() {
@@ -283,6 +297,7 @@ describe('HTML', function() {
     it('should not accept SVG animation tags', function() {
       expectHTML('<svg xmlns:xlink="http://www.w3.org/1999/xlink"><a><text y="1em">Click me</text><animate attributeName="xlink:href" values="javascript:alert(1)"/></a></svg>')
         .toBeOneOf('<svg xmlns:xlink="http://www.w3.org/1999/xlink"><a><text y="1em">Click me</text></a></svg>',
+                   '<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink"><a><text y="1em">Click me</text></a></svg>',
                    '<svg xmlns="http://www.w3.org/2000/svg"><a><text y="1em">Click me</text></a></svg>');
 
       expectHTML('<svg><a xmlns:xlink="http://www.w3.org/1999/xlink" xlink:href="?"><circle r="400"></circle>' +
@@ -292,18 +307,24 @@ describe('HTML', function() {
                    '<svg xmlns="http://www.w3.org/2000/svg"><a xlink:href="?" xmlns:xlink="http://www.w3.org/1999/xlink"><circle r="400"></circle></a></svg>',
                    '<svg xmlns="http://www.w3.org/2000/svg"><a xmlns:xlink="http://www.w3.org/1999/xlink" xlink:href="?"><circle r="400"></circle></a></svg>');
     });
+
+    it('should not accept SVG `use` tags', function() {
+      expectHTML('<svg><use xlink:href="test.svg#xss" /></svg>')
+        .toBeOneOf('<svg></svg>',
+                   '<svg xmlns:xlink="http://www.w3.org/1999/xlink"></svg>',
+                   '<svg xmlns="http://www.w3.org/2000/svg"></svg>');
+    });
   });
 
 
   describe('htmlSanitizerWriter', function() {
     /* global htmlSanitizeWriter: false */
-    if (angular.isUndefined(window.htmlSanitizeWriter)) return;
 
     var writer, html, uriValidator;
     beforeEach(function() {
       html = '';
       uriValidator = jasmine.createSpy('uriValidator');
-      writer = htmlSanitizeWriter({push:function(text) {html+=text;}}, uriValidator);
+      writer = htmlSanitizeWriter({push:function(text) {html += text;}}, uriValidator);
     });
 
     it('should write basic HTML', function() {
@@ -337,7 +358,7 @@ describe('HTML', function() {
     });
 
     it('should ignore unknown attributes', function() {
-      writer.start('div', {unknown:""});
+      writer.start('div', {unknown:''});
       expect(html).toEqual('<div>');
     });
 
@@ -381,21 +402,21 @@ describe('HTML', function() {
       it('should call the uri validator', function() {
         writer.start('a', {href:'someUrl'}, false);
         expect(uriValidator).toHaveBeenCalledWith('someUrl', false);
-        uriValidator.reset();
+        uriValidator.calls.reset();
         writer.start('img', {src:'someImgUrl'}, false);
         expect(uriValidator).toHaveBeenCalledWith('someImgUrl', true);
-        uriValidator.reset();
+        uriValidator.calls.reset();
         writer.start('someTag', {src:'someNonUrl'}, false);
         expect(uriValidator).not.toHaveBeenCalled();
       });
 
       it('should drop non valid uri attributes', function() {
-        uriValidator.andReturn(false);
+        uriValidator.and.returnValue(false);
         writer.start('a', {href:'someUrl'}, false);
         expect(html).toEqual('<a>');
 
         html = '';
-        uriValidator.andReturn(true);
+        uriValidator.and.returnValue(true);
         writer.start('a', {href:'someUrl'}, false);
         expect(html).toEqual('<a href="someUrl">');
       });
@@ -404,22 +425,18 @@ describe('HTML', function() {
 
   describe('uri checking', function() {
     beforeEach(function() {
-      this.addMatchers({
+      jasmine.addMatchers({
         toBeValidUrl: function() {
-          var sanitize;
-          inject(function($sanitize) {
-            sanitize = $sanitize;
-          });
-          var input = '<a href="' + this.actual + '"></a>';
-          return sanitize(input) === input;
-        },
-        toBeValidImageSrc: function() {
-          var sanitize;
-          inject(function($sanitize) {
-            sanitize = $sanitize;
-          });
-          var input = '<img src="' + this.actual + '"/>';
-          return sanitize(input) === input;
+          return {
+            compare: function(actual) {
+              var sanitize;
+              inject(function($sanitize) {
+                sanitize = $sanitize;
+              });
+              var input = '<a href="' + actual + '"></a>';
+              return { pass: sanitize(input) === input };
+            }
+          };
         }
       });
     });
@@ -430,12 +447,12 @@ describe('HTML', function() {
         $provide.value('$$sanitizeUri', $$sanitizeUri);
       });
       inject(function() {
-        $$sanitizeUri.andReturn('someUri');
+        $$sanitizeUri.and.returnValue('someUri');
 
         expectHTML('<a href="someUri"></a>').toEqual('<a href="someUri"></a>');
         expect($$sanitizeUri).toHaveBeenCalledWith('someUri', false);
 
-        $$sanitizeUri.andReturn('unsafe:someUri');
+        $$sanitizeUri.and.returnValue('unsafe:someUri');
         expectHTML('<a href="someUri"></a>').toEqual('<a></a>');
       });
     });
@@ -446,12 +463,12 @@ describe('HTML', function() {
         $provide.value('$$sanitizeUri', $$sanitizeUri);
       });
       inject(function() {
-        $$sanitizeUri.andReturn('someUri');
+        $$sanitizeUri.and.returnValue('someUri');
 
         expectHTML('<img src="someUri"/>').toEqual('<img src="someUri">');
         expect($$sanitizeUri).toHaveBeenCalledWith('someUri', true);
 
-        $$sanitizeUri.andReturn('unsafe:someUri');
+        $$sanitizeUri.and.returnValue('unsafe:someUri');
         expectHTML('<img src="someUri"/>').toEqual('<img>');
       });
     });
@@ -473,13 +490,13 @@ describe('HTML', function() {
     });
 
     it('should not be URI', function() {
-      /* jshint scripturl: true */
+      // eslint-disable-next-line no-script-url
       expect('javascript:alert').not.toBeValidUrl();
     });
 
     describe('javascript URLs', function() {
       it('should ignore javascript:', function() {
-        /* jshint scripturl: true */
+        // eslint-disable-next-line no-script-url
         expect('JavaScript:abc').not.toBeValidUrl();
         expect(' \n Java\n Script:abc').not.toBeValidUrl();
         expect('http://JavaScript/my.js').toBeValidUrl();
