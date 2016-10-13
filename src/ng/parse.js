@@ -17,14 +17,14 @@ var objectValueOf = {}.constructor.prototype.valueOf;
 
 // Sandboxing Angular Expressions
 // ------------------------------
-// Angular expressions are no longer sandboxed. So it is now even easier to access arbitary JS code by
+// Angular expressions are no longer sandboxed. So it is now even easier to access arbitrary JS code by
 // various means such as obtaining a reference to native JS functions like the Function constructor.
 //
 // As an example, consider the following Angular expression:
 //
 //   {}.toString.constructor('alert("evil JS code")')
 //
-// It is important to realise that if you create an expression from a string that contains user provided
+// It is important to realize that if you create an expression from a string that contains user provided
 // content then it is possible that your application contains a security vulnerability to an XSS style attack.
 //
 // See https://docs.angularjs.org/guide/security
@@ -338,6 +338,10 @@ AST.prototype = {
   assignment: function() {
     var result = this.ternary();
     if (this.expect('=')) {
+      if (!isAssignable(result)) {
+        throw $parseMinErr('lval', 'Trying to assign a value to a non l-value');
+      }
+
       result = { type: AST.AssignmentExpression, left: result, right: this.assignment(), operator: '='};
     }
     return result;
@@ -940,7 +944,7 @@ ASTCompiler.prototype = {
           self.if_(self.stage === 'inputs' || 's', function() {
             if (create && create !== 1) {
               self.if_(
-                self.not(self.nonComputedMember('s', ast.name)),
+                self.isNull(self.nonComputedMember('s', ast.name)),
                 self.lazyAssign(self.nonComputedMember('s', ast.name), '{}'));
             }
             self.assign(intoId, self.nonComputedMember('s', ast.name));
@@ -969,7 +973,7 @@ ASTCompiler.prototype = {
             }
           } else {
             if (create && create !== 1) {
-              self.if_(self.not(self.nonComputedMember(left, ast.property.name)), self.lazyAssign(self.nonComputedMember(left, ast.property.name), '{}'));
+              self.if_(self.isNull(self.nonComputedMember(left, ast.property.name)), self.lazyAssign(self.nonComputedMember(left, ast.property.name), '{}'));
             }
             expression = self.nonComputedMember(left, ast.property.name);
             self.assign(intoId, expression);
@@ -1024,9 +1028,6 @@ ASTCompiler.prototype = {
     case AST.AssignmentExpression:
       right = this.nextId();
       left = {};
-      if (!isAssignable(ast.left)) {
-        throw $parseMinErr('lval', 'Trying to assign a value to a non l-value');
-      }
       this.recurse(ast.left, undefined, left, function() {
         self.if_(self.notNull(left.context), function() {
           self.recurse(ast.right, right);
@@ -1152,6 +1153,10 @@ ASTCompiler.prototype = {
 
   not: function(expression) {
     return '!(' + expression + ')';
+  },
+
+  isNull: function(expression) {
+    return expression + '==null';
   },
 
   notNull: function(expression) {
@@ -1545,7 +1550,7 @@ ASTInterpreter.prototype = {
   identifier: function(name, context, create, expression) {
     return function(scope, locals, assign, inputs) {
       var base = locals && (name in locals) ? locals : scope;
-      if (create && create !== 1 && base && !(base[name])) {
+      if (create && create !== 1 && base && base[name] == null) {
         base[name] = {};
       }
       var value = base ? base[name] : undefined;
@@ -1582,7 +1587,7 @@ ASTInterpreter.prototype = {
     return function(scope, locals, assign, inputs) {
       var lhs = left(scope, locals, assign, inputs);
       if (create && create !== 1) {
-        if (lhs && !(lhs[right])) {
+        if (lhs && lhs[right] == null) {
           lhs[right] = {};
         }
       }
@@ -1719,7 +1724,7 @@ function $ParseProvider() {
   * representation. It is expected for the function to return `true` or `false`, whether that
   * character is allowed or not.
   *
-  * Since this function will be called extensivelly, keep the implementation of these functions fast,
+  * Since this function will be called extensively, keep the implementation of these functions fast,
   * as the performance of these functions have a direct impact on the expressions parsing speed.
   *
   * @param {function=} identifierStart The function that will decide whether the given character is
