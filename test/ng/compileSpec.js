@@ -4378,6 +4378,37 @@ describe('$compile', function() {
             });
           });
 
+          it('should clean up `@`-binding observers when re-assigning bindings', function() {
+            var constructorSpy = jasmine.createSpy('constructor');
+            var prototypeSpy = jasmine.createSpy('prototype');
+
+            function TestController() {
+              return {$onChanges: constructorSpy};
+            }
+            TestController.prototype.$onChanges = prototypeSpy;
+
+            module(function($compileProvider) {
+              $compileProvider.component('test', {
+                bindings: {attr: '@'},
+                controller: TestController
+              });
+            });
+
+            inject(function($compile, $rootScope) {
+              var template = '<test attr="{{a}}"></test>';
+              $rootScope.a = 'foo';
+
+              element = $compile(template)($rootScope);
+              $rootScope.$digest();
+              expect(constructorSpy).toHaveBeenCalled();
+              expect(prototypeSpy).not.toHaveBeenCalled();
+
+              constructorSpy.calls.reset();
+              $rootScope.$apply('a = "bar"');
+              expect(constructorSpy).toHaveBeenCalled();
+              expect(prototypeSpy).not.toHaveBeenCalled();
+            });
+          });
 
           it('should not call `$onChanges` twice even when the initial value is `NaN`', function() {
             var onChangesSpy = jasmine.createSpy('$onChanges');
@@ -5453,7 +5484,7 @@ describe('$compile', function() {
 
                     this.$onChanges = function(changes) {
                       if (changes.input) {
-                        log.push(['$onChanges', changes.input]);
+                        log.push(['$onChanges', copy(changes.input)]);
                       }
                     };
                   }
@@ -5478,6 +5509,53 @@ describe('$compile', function() {
                   'constructor',
                   ['$onChanges', jasmine.objectContaining({ currentValue: 'outer' })],
                   '$onInit'
+                ]);
+              });
+            });
+
+            it('should not update isolate again after $onInit if outer object reference has not changed', function() {
+              module('owComponentTest');
+              inject(function() {
+                $rootScope.name = ['outer'];
+                compile('<ow-component input="name"></ow-component>');
+
+                expect($rootScope.name).toEqual(['outer']);
+                expect(component.input).toEqual('$onInit');
+
+                $rootScope.name[0] = 'inner';
+                $rootScope.$digest();
+
+                expect($rootScope.name).toEqual(['inner']);
+                expect(component.input).toEqual('$onInit');
+
+                expect(log).toEqual([
+                  'constructor',
+                  ['$onChanges', jasmine.objectContaining({ currentValue: ['outer'] })],
+                  '$onInit'
+                ]);
+              });
+            });
+
+            it('should update isolate again after $onInit if outer object reference changes even if equal', function() {
+              module('owComponentTest');
+              inject(function() {
+                $rootScope.name = ['outer'];
+                compile('<ow-component input="name"></ow-component>');
+
+                expect($rootScope.name).toEqual(['outer']);
+                expect(component.input).toEqual('$onInit');
+
+                $rootScope.name = ['outer'];
+                $rootScope.$digest();
+
+                expect($rootScope.name).toEqual(['outer']);
+                expect(component.input).toEqual(['outer']);
+
+                expect(log).toEqual([
+                  'constructor',
+                  ['$onChanges', jasmine.objectContaining({ currentValue: ['outer'] })],
+                  '$onInit',
+                  ['$onChanges', jasmine.objectContaining({ previousValue: ['outer'], currentValue: ['outer'] })]
                 ]);
               });
             });
