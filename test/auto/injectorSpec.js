@@ -124,7 +124,7 @@ describe('injector', function() {
     expect($injector).not.toBe(providerInjector);
   }));
 
-  it('should have an false strictDi property', inject(function($injector) {
+  it('should have a false strictDi property', inject(function($injector) {
     expect($injector.strictDi).toBe(false);
   }));
 
@@ -192,7 +192,7 @@ describe('injector', function() {
 
 
     it('should create $inject', function() {
-      var extraParans = angular.noop;
+      var extraParams = angular.noop;
       /* eslint-disable space-before-function-paren */
       // keep the multi-line to make sure we can handle it
       function $f_n0 /*
@@ -203,7 +203,7 @@ describe('injector', function() {
                  function(a, b) {}
                  */
           _c,
-          /* {some type} */ d) { extraParans(); }
+          /* {some type} */ d) { extraParams(); }
       /* eslint-enable */
       expect(annotate($f_n0)).toEqual(['$a', 'b_', '_c',  'd']);
       expect($f_n0.$inject).toEqual(['$a', 'b_', '_c',  'd']);
@@ -944,7 +944,7 @@ describe('injector', function() {
     });
 
 
-    it('should throw usefull error on wrong argument type]', function() {
+    it('should throw useful error on wrong argument type]', function() {
       expect(function() {
         $injector.invoke({});
       }).toThrowMinErr('ng', 'areq', 'Argument \'fn\' is not a function, got Object');
